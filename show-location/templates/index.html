@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+
+    <!-- Load Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        #header {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        #controls {
+            margin-bottom: 10px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 8px 16px;
+            margin: 0 5px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #map {
+            height: 500px;
+            width: 100%;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        #coordinates {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #eef;
+            border-radius: 5px;
+            font-weight: bold;
+            min-height: 20px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h2>{{.Title}}</h2>
+    </div>
+
+    <div id="controls">
+        <button id="currentLocationBtn">Get Current Location</button>
+        <strong>Coordinates:</strong> <span id="coord-display">Click on the map to display coordinates here...</span>
+    </div>
+
+    <div id="map"></div>
+
+    <!-- Load Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // Initialize the map centered at a default location (London)
+        const map = L.map('map').setView([51.505, -0.09], 13);
+
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Handle click events on the map
+        map.on('click', function(e) {
+            const lat = e.latlng.lat.toFixed(6);
+            const lng = e.latlng.lng.toFixed(6);
+
+            document.getElementById('coord-display').innerHTML =
+                `Latitude: ${lat}, Longitude: ${lng}`;
+        });
+
+        // Function to get current location
+        function getCurrentLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+
+                        // Update coordinates display
+                        document.getElementById('coord-display').innerHTML =
+                            `Current Location - Latitude: ${lat.toFixed(6)}, Longitude: ${lng.toFixed(6)}`;
+
+                        // Center the map on current location
+                        map.setView([lat, lng], 13);
+
+                        // Add a marker at current location
+                        L.marker([lat, lng]).addTo(map)
+                            .bindPopup('Your Current Location')
+                            .openPopup();
+                    },
+                    function(error) {
+                        document.getElementById('coord-display').innerHTML =
+                            `Error getting location: ${error.message}`;
+                    }
+                );
+            } else {
+                document.getElementById('coord-display').innerHTML =
+                    "Geolocation is not supported by this browser.";
+            }
+        }
+
+        // Add event listener to the current location button
+        document.getElementById('currentLocationBtn').addEventListener('click', getCurrentLocation);
+    </script>
+</body>
+</html>
