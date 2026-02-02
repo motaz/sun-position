@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sun Position Tracker</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☀️</text></svg>">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <!-- Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 100%;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f8ff;
+            height: 100vh;
+            overflow: auto;
+        }
+
+        .container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            min-height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 40px);
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            font-size: 1.5em;
+            margin: 0 0 10px 0;
+        }
+
+        .input-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 6px;
+        }
+
+        .input-group {
+            flex: 1;
+            min-width: 100px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 3px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        input, button {
+            width: 100%;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            box-sizing: border-box;
+            font-size: 0.9em;
+        }
+
+        #latitude, #longitude {
+            padding: 4px;
+            font-size: 0.85em;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            margin-top: 12px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        .result-section {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f0f8ff;
+            border-radius: 6px;
+            border-left: 4px solid #4CAF50;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .sun-data {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .data-card {
+            flex: 1;
+            min-width: 150px;
+            background-color: white;
+            padding: 8px;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .data-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #2196F3;
+        }
+
+        .data-label {
+            font-size: 0.8em;
+            color: #666;
+        }
+
+
+        .real-time-toggle {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+        }
+
+        .error {
+            color: red;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        /* Map specific styles */
+        #map-container {
+            width: 100%;
+            flex: 1;
+            min-height: 350px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #world-map {
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            flex: 1;
+        }
+
+        /* Leaflet-specific fixes */
+        .leaflet-container {
+            height: 100%;
+            width: 100%;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+                height: 100vh;
+            }
+
+            .container {
+                min-height: calc(100vh - 20px);
+                padding: 10px;
+            }
+
+            div[style="display: flex; flex-wrap: wrap; gap: 20px;"] {
+                flex-direction: column;
+            }
+
+            div[style="flex: 1; min-width: 300px; height: 70vh;"] {
+                height: 40vh;
+                min-height: 300px;
+            }
+
+            div[style="flex: 0 0 400px; min-width: 300px;"] {
+                flex: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sun Position Tracker</h1>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 20px; flex: 1; min-height: 0;">
+            <!-- Smaller Map on the Left -->
+            <div style="flex: 0 0 50%; min-width: 300px; display: flex; flex-direction: column; min-height: 0;">
+                <label>Click Map to Set Location</label>
+                <div id="map-container" style="flex: 1; min-height: 350px;">
+                    <div id="world-map"></div>
+                </div>
+            </div>
+
+            <!-- Sun Tracker Controls and Results on the Right -->
+            <div style="flex: 0 0 45%; min-width: 300px; display: flex; flex-direction: column; gap: 10px;">
+                <div class="input-section">
+                    <div class="input-group">
+                        <label for="latitude">Latitude</label>
+                        <input type="number" id="latitude" step="any" placeholder="e.g., 40.7128">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="longitude">Longitude</label>
+                        <input type="number" id="longitude" step="any" placeholder="e.g.g., -74.0060">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="date">Date</label>
+                        <input type="date" id="date" value="">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="time">Time (local)</label>
+                        <input type="time" id="time" value="">
+                    </div>
+
+                    <div class="input-group">
+                        <button id="calculate-btn">Calculate Sun Position</button>
+                    </div>
+
+                    <div class="input-group">
+                        <button id="current-location-btn" type="button" style="background-color: #2196F3;">Use Current Location</button>
+                    </div>
+
+                    <div class="input-group">
+                        <div class="real-time-toggle">
+                            <input type="checkbox" id="real-time" checked>
+                            <label for="real-time">Tracking</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="error-message" class="error"></div>
+
+                <!-- Sun Position Results -->
+                <div class="result-section">
+                    <div class="sun-data">
+                        <div class="data-card" style="flex: 2;">
+                            <div class="data-value" id="altitude-value" style="color: #FF5722; font-size: 1.8em;">--</div>
+                            <div class="data-label">Altitude (Elevation) °</div>
+                        </div>
+
+                        <div class="data-card" style="flex: 1;">
+                            <div class="data-value" id="azimuth-value">--</div>
+                            <div class="data-label">Azimuth (°)</div>
+                        </div>
+
+                        <div class="data-card" style="flex: 1;">
+                            <div class="data-value" id="sunrise-value">--</div>
+                            <div class="data-label">Sunrise</div>
+                        </div>
+
+                        <div class="data-card" style="flex: 1;">
+                            <div class="data-value" id="sunset-value">--</div>
+                            <div class="data-label">Sunset</div>
+                        </div>
+                    </div>
+
+                    <h4>Daily Sun Path</h4>
+                    <canvas id="sun-path-canvas" width="800" height="400" style="width: 100%; max-width: 800px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Cookie utility functions
+        function setCookie(name, value, days) {
+            const expires = new Date();
+            expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+            document.cookie = name + '=' + value + ';expires=' + expires.toUTCString() + ';path=/';
+        }
+
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for(let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+
+        // DOM elements
+        const latitudeInput = document.getElementById('latitude');
+        const longitudeInput = document.getElementById('longitude');
+        const dateInput = document.getElementById('date');
+        const timeInput = document.getElementById('time');
+        const calculateBtn = document.getElementById('calculate-btn');
+        const altitudeValue = document.getElementById('altitude-value');
+        const azimuthValue = document.getElementById('azimuth-value');
+        const sunriseValue = document.getElementById('sunrise-value');
+        const sunsetValue = document.getElementById('sunset-value');
+        const errorMessage = document.getElementById('error-message');
+        const realTimeToggle = document.getElementById('real-time');
+        const canvas = document.getElementById('sun-path-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Load last location from cookies if available
+        function loadLastLocationFromCookies() {
+            const savedLat = getCookie('lastLatitude');
+            const savedLng = getCookie('lastLongitude');
+
+            if (savedLat && savedLng) {
+                latitudeInput.value = savedLat;
+                longitudeInput.value = savedLng;
+                return true; // Indicate that we loaded from cookies
+            }
+            return false; // Indicate that we didn't load from cookies
+        }
+
+        // Set default date and time
+        const now = new Date();
+        document.getElementById('date').valueAsDate = now;
+
+        // Format time as HH:MM
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        document.getElementById('time').value = `${hours}:${minutes}`;
+
+        // Initialize the map
+        let map;
+        let marker;
+
+        // Initialize with the default city
+        function initializeMap() {
+            // Load last location from cookies first
+            loadLastLocationFromCookies();
+
+            // If no location was loaded from cookies, set default values
+            if (!latitudeInput.value || !longitudeInput.value) {
+                latitudeInput.value = "40.7128";  // Default to New York
+                longitudeInput.value = "-74.0060";
+            }
+
+            // Initialize the map centered on the coordinates (from cookies or defaults)
+            const defaultLat = parseFloat(latitudeInput.value);
+            const defaultLng = parseFloat(longitudeInput.value);
+
+            // Create the map
+            map = L.map('world-map').setView([defaultLat, defaultLng], 5);
+
+            // Add OpenStreetMap tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 18,
+            }).addTo(map);
+
+            // Add a marker at the location (from cookies or defaults)
+            marker = L.marker([defaultLat, defaultLng], {draggable: true}).addTo(map);
+
+            // Add click event to map
+            map.on('click', function(e) {
+                // Update the input fields with the clicked coordinates
+                latitudeInput.value = e.latlng.lat.toFixed(4);
+                longitudeInput.value = e.latlng.lng.toFixed(4);
+
+                // Save location to cookies
+                setCookie('lastLatitude', e.latlng.lat.toFixed(4), 30);
+                setCookie('lastLongitude', e.latlng.lng.toFixed(4), 30);
+
+                // Update or move the marker to the clicked location
+                if (marker) {
+                    map.removeLayer(marker);
+                }
+                marker = L.marker([e.latlng.lat, e.latlng.lng], {draggable: true}).addTo(map);
+
+                // Update the marker position when dragged
+                marker.on('dragend', function(event) {
+                    const markerPos = marker.getLatLng();
+                    latitudeInput.value = markerPos.lat.toFixed(4);
+                    longitudeInput.value = markerPos.lng.toFixed(4);
+
+                    // Save location to cookies after dragging
+                    setCookie('lastLatitude', markerPos.lat.toFixed(4), 30);
+                    setCookie('lastLongitude', markerPos.lng.toFixed(4), 30);
+
+                    // Calculate sun position after dragging
+                    calculateSunPosition();
+                });
+
+                // Calculate sun position after clicking
+                calculateSunPosition();
+            });
+
+            // Also update the marker when coordinates change via input
+            latitudeInput.addEventListener('change', updateMarkerFromInputs);
+            longitudeInput.addEventListener('change', updateMarkerFromInputs);
+
+            // Calculate sun position for the coordinates (from cookies or defaults)
+            calculateSunPosition();
+
+            // Enable real-time tracking by default
+            realTimeToggle.checked = true;
+            realTimeToggle.dispatchEvent(new Event('change'));
+        }
+
+        // Initialize the map when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Small delay to ensure the DOM is fully loaded before initializing the map
+            setTimeout(() => {
+                initializeMap();
+                // Small additional delay to ensure map is rendered, then invalidate its size
+                setTimeout(() => {
+                    if (map) {
+                        map.invalidateSize();
+                    }
+                }, 200);
+            }, 100);
+        });
+
+        // Also initialize the map when the window is loaded (ensures all resources are loaded)
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                if (!map) {
+                    initializeMap();
+                } else {
+                    map.invalidateSize();
+                }
+            }, 100);
+        });
+
+        // Also initialize the map when the window is resized to ensure proper display
+        window.addEventListener('resize', () => {
+            if (map) {
+                setTimeout(() => map.invalidateSize(), 100);
+            }
+        });
+
+        // Function to update marker position based on input fields
+        function updateMarkerFromInputs() {
+            const lat = parseFloat(latitudeInput.value);
+            const lng = parseFloat(longitudeInput.value);
+
+            if (!isNaN(lat) && !isNaN(lng)) {
+                // Save location to cookies
+                setCookie('lastLatitude', lat.toFixed(4), 30); // Store for 30 days
+                setCookie('lastLongitude', lng.toFixed(4), 30); // Store for 30 days
+
+                // Update the marker position
+                if (marker) {
+                    map.removeLayer(marker);
+                }
+                marker = L.marker([lat, lng], {draggable: true}).addTo(map);
+
+                // Update the map view to center on the new position
+                map.setView([lat, lng], map.getZoom());
+
+                // Add drag event to the new marker
+                marker.on('dragend', function(event) {
+                    const markerPos = marker.getLatLng();
+                    latitudeInput.value = markerPos.lat.toFixed(4);
+                    longitudeInput.value = markerPos.lng.toFixed(4);
+
+                    // Save location to cookies after dragging
+                    setCookie('lastLatitude', markerPos.lat.toFixed(4), 30);
+                    setCookie('lastLongitude', markerPos.lng.toFixed(4), 30);
+
+                    // Calculate sun position after dragging
+                    calculateSunPosition();
+                });
+            }
+        }
+
+        // Calculate sun position
+        async function calculateSunPosition() {
+            const lat = parseFloat(latitudeInput.value);
+            const lon = parseFloat(longitudeInput.value);
+            const date = dateInput.value;
+            const time = timeInput.value;
+
+            if (isNaN(lat) || isNaN(lon)) {
+                showError('Please enter valid latitude and longitude values.');
+                return;
+            }
+
+            if (!date || !time) {
+                showError('Please enter both date and time.');
+                return;
+            }
+
+            // Save location to cookies when calculating
+            setCookie('lastLatitude', lat.toFixed(4), 30);
+            setCookie('lastLongitude', lon.toFixed(4), 30);
+
+            try {
+                // Use coordinates directly since we removed country/city dropdowns
+                const apiUrl = `/sun-pos/api/sun-position?lat=${lat}&lon=${lon}&date=${date}&time=${time}`;
+
+                const response = await fetch(apiUrl);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // Update UI with results
+                altitudeValue.textContent = data.sun_altitude.toFixed(2);
+                azimuthValue.textContent = data.sun_azimuth.toFixed(2);
+                // Display sunrise and sunset
+                sunriseValue.textContent = data.sunrise || 'N/A';
+                sunsetValue.textContent = data.sunset || 'N/A';
+
+                // Clear error message
+                errorMessage.textContent = '';
+
+                // Update the daily sun path chart
+                updateSunPathChart(lat, lon, date);
+            } catch (error) {
+                showError(`Error calculating sun position: ${error.message}`);
+                console.error('Error:', error);
+            }
+        }
+
+        // Show error message
+        function showError(message) {
+            errorMessage.textContent = message;
+        }
+
+
+        // Update the daily sun path chart
+        async function updateSunPathChart(lat, lon, date) {
+            try {
+                // Calculate sun positions for the entire day
+                const positions = [];
+
+                // Use coordinates directly since we removed country/city dropdowns
+                const baseUrl = `/sun-pos/api/sun-position?lat=${lat}&lon=${lon}&date=${date}`;
+
+                // Reduce the number of API calls by sampling every 30 minutes instead of every 15 minutes
+                for (let hour = 0; hour < 24; hour++) {
+                    for (let minute = 0; minute < 60; minute += 30) { // Every 30 minutes
+                        const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+
+                        try {
+                            const response = await fetch(`${baseUrl}&time=${timeStr}`);
+                            if (!response.ok) {
+                                throw new Error(`HTTP error! Status: ${response.status}`);
+                            }
+                            const data = await response.json();
+
+                            positions.push({
+                                hour: hour + minute/60,
+                                altitude: data.sun_altitude,
+                                azimuth: data.sun_azimuth,
+                                time: timeStr
+                            });
+                        } catch (fetchError) {
+                            console.error(`Error fetching sun position for ${timeStr}:`, fetchError);
+                            // Add a placeholder with null values to maintain timeline
+                            positions.push({
+                                hour: hour + minute/60,
+                                altitude: null,
+                                azimuth: null,
+                                time: timeStr
+                            });
+                        }
+                    }
+                }
+
+                // Draw the chart, passing the selected time to highlight the sun at that specific time
+                drawSunPathChart(ctx, positions, timeInput.value);
+            } catch (error) {
+                console.error('Error updating sun path chart:', error);
+            }
+        }
+
+
+        // Get current location from browser
+        function getCurrentLocation() {
+            const locationBtn = document.getElementById('current-location-btn');
+
+            if (!navigator.geolocation) {
+                showError("Geolocation is not supported by your browser");
+                return;
+            }
+
+            locationBtn.disabled = true;
+            locationBtn.textContent = "Getting location...";
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    // Update latitude and longitude fields
+                    latitudeInput.value = position.coords.latitude.toFixed(4);
+                    longitudeInput.value = position.coords.longitude.toFixed(4);
+
+                    // Save location to cookies
+                    setCookie('lastLatitude', position.coords.latitude.toFixed(4), 30);
+                    setCookie('lastLongitude', position.coords.longitude.toFixed(4), 30);
+
+                    // Update marker position on the map
+                    updateMarkerFromInputs();
+
+                    // Reset button
+                    locationBtn.disabled = false;
+                    locationBtn.textContent = "Use Current Location";
+
+                    // Calculate sun position with new coordinates
+                    calculateSunPosition();
+                },
+                (error) => {
+                    // Reset button
+                    locationBtn.disabled = false;
+                    locationBtn.textContent = "Use Current Location";
+
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            showError("Location access denied by user");
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            showError("Location information is unavailable");
+                            break;
+                        case error.TIMEOUT:
+                            showError("The request to get location timed out");
+                            break;
+                        default:
+                            showError("An unknown error occurred getting location");
+                            break;
+                    }
+                }
+            );
+        }
+
+        // Event listeners
+        calculateBtn.addEventListener('click', calculateSunPosition);
+        document.getElementById('current-location-btn').addEventListener('click', getCurrentLocation);
+
+        // Real-time tracking
+        let realTimeInterval;
+        realTimeToggle.addEventListener('change', function() {
+            if (this.checked) {
+                // Start real-time updates
+                realTimeInterval = setInterval(function() {
+                    // Update date and time inputs to current
+                    const now = new Date();
+                    dateInput.valueAsDate = now;
+
+                    const hours = String(now.getHours()).padStart(2, '0');
+                    const minutes = String(now.getMinutes()).padStart(2, '0');
+                    timeInput.value = `${hours}:${minutes}`;
+
+                    // Calculate sun position
+                    calculateSunPosition();
+                }, 60000); // Update every minute
+            } else {
+                // Stop real-time updates
+                clearInterval(realTimeInterval);
+            }
+        });
+
+        // Initialize with current position
+        calculateSunPosition();
+    </script>
+    <script src="/sun-pos/static/js/sun-chart.js"></script>
+</body>
+</html>
