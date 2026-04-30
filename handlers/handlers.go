@@ -24,22 +24,26 @@ type SunPositionRequest struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
 	Date      string  `json:"date"` // Format: YYYY-MM-DD
-	Time      string  `json:"time"` // Format: HH:MM
+	Time      string  `json:"time"` // Format: HH:MM:SS
 }
 
 // SunPositionResponse represents the response body
 type SunPositionResponse struct {
-	SunAltitude float64   `json:"sun_altitude"`
-	SunAzimuth  float64   `json:"sun_azimuth"`
-	Timestamp   time.Time `json:"timestamp"`
-	Location    string    `json:"location"`
-	City        string    `json:"city,omitempty"`  // Include city name if available
-	Date        string    `json:"date"`
-	Time        string    `json:"time"`
-	Sunrise     string    `json:"sunrise"`
-	Sunset      string    `json:"sunset"`
+	SunAltitude      float64   `json:"sun_altitude"`
+	SunAzimuth       float64   `json:"sun_azimuth"`
+	PeakAltitude     float64   `json:"peak_altitude"`
+	PeakTime         string    `json:"peak_time"`
+	MidAfternoonTime string    `json:"mid_afternoon_time"`
+	Timestamp        time.Time `json:"timestamp"`
+	Location         string    `json:"location"`
+	City             string    `json:"city,omitempty"` // Include city name if available
+	Date             string    `json:"date"`
+	Time             string    `json:"time"`
+	Sunrise          string    `json:"sunrise"`
+	Sunset           string    `json:"sunset"`
+	Dawn             string    `json:"dawn"` // Astronomical twilight start
+	Dusk             string    `json:"dusk"` // Astronomical twilight end
 }
-
 
 // getClientIP extracts the client's IP address from the request, considering proxies
 func getClientIP(r *http.Request) string {
@@ -159,7 +163,7 @@ func SunPositionHandler(w http.ResponseWriter, r *http.Request) {
 	if dateStr == "" || timeStr == "" {
 		now := time.Now()
 		dateStr = now.Format("2006-01-02")
-		timeStr = now.Format("15:04")
+		timeStr = now.Format("15:04:05")
 	}
 
 	req.Latitude = lat
@@ -175,15 +179,17 @@ func SunPositionHandler(w http.ResponseWriter, r *http.Request) {
 	timeZoneOffsetSeconds := int(timeZoneOffsetHours * 60 * 60) // Convert hours to seconds
 	location := time.FixedZone("Local", timeZoneOffsetSeconds)
 
-	parsedTime, err := time.ParseInLocation("2006-01-02 15:04", fmt.Sprintf("%s %s", req.Date, req.Time), location)
+	// Try parsing with seconds first, then without seconds
+	var parsedTime time.Time
+	parsedTime, err = time.ParseInLocation("2006-01-02 15:04:05", fmt.Sprintf("%s %s", req.Date, req.Time), location)
 	if err != nil {
-		http.Error(w, "Invalid date or time format", http.StatusBadRequest)
-		return
+		// Try without seconds
+		parsedTime, err = time.ParseInLocation("2006-01-02 15:04", fmt.Sprintf("%s %s", req.Date, req.Time), location)
+		if err != nil {
+			http.Error(w, "Invalid date or time format (expected YYYY-MM-DD and HH:MM or HH:MM:SS)", http.StatusBadRequest)
+			return
+		}
 	}
-
-	// Debug: Print the parsed time
-	fmt.Printf("DEBUG: Input time %s %s for location (%.4f, %.4f) -> parsed as %v (location: %s)\n",
-		req.Date, req.Time, req.Latitude, req.Longitude, parsedTime, location.String())
 
 	// Calculate sun position
 	altitude, azimuth := utils.CalculateSunPosition(req.Latitude, req.Longitude, parsedTime)
@@ -215,17 +221,43 @@ func SunPositionHandler(w http.ResponseWriter, r *http.Request) {
 		Time:        req.Time,
 	}
 
+	// Calculate peak sun altitude and time for for the given date and location
+	peakTime, peakAltitude := utils.CalculatePeakAltitudeTime(req.Latitude, req.Longitude, parsedTime)
+	response.PeakAltitude = peakAltitude
+	response.PeakTime = peakTime.Format("15:04:05")
+
 	// Calculate sunrise and sunset for the given date and location
 	sunriseTime, sunsetTime := utils.CalculateSunriseSunset(req.Latitude, req.Longitude, parsedTime)
 	if !sunriseTime.IsZero() {
-		response.Sunrise = sunriseTime.Format("15:04")
+		response.Sunrise = sunriseTime.Format("15:04:05")
 	} else {
 		response.Sunrise = "N/A"
 	}
 	if !sunsetTime.IsZero() {
-		response.Sunset = sunsetTime.Format("15:04")
+		response.Sunset = sunsetTime.Format("15:04:05")
 	} else {
 		response.Sunset = "N/A"
+	}
+
+	// Calculate mid-afternoon time (midpoint between peak and sunset)
+	midAfternoonTime := utils.CalculateMidAfternoonTime(peakTime, sunsetTime)
+	if !midAfternoonTime.IsZero() {
+		response.MidAfternoonTime = midAfternoonTime.Format("15:04:05")
+	} else {
+		response.MidAfternoonTime = "N/A"
+	}
+
+	// Calculate dawn (astronomical twilight start) and dusk (astronomical twilight end)
+	dawnTime, duskTime := utils.CalculateTwilightTimes(req.Latitude, req.Longitude, parsedTime)
+	if !dawnTime.IsZero() {
+		response.Dawn = dawnTime.Format("15:04:05")
+	} else {
+		response.Dawn = "N/A"
+	}
+	if !duskTime.IsZero() {
+		response.Dusk = duskTime.Format("15:04:05")
+	} else {
+		response.Dusk = "N/A"
 	}
 
 	w.Header().Set("Content-Type", "application/json")

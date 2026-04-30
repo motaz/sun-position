@@ -117,9 +117,31 @@
             color: #2196F3;
         }
 
+        #max-altitude-value {
+            color: #2e7d32;
+        }
+
         .data-label {
             font-size: 0.8em;
             color: #666;
+        }
+
+        .arabic-label {
+            color: #2e7d32;
+            font-weight: bold;
+            display: block;
+            margin-top: 2px;
+        }
+
+        .ampm {
+            font-size: 0.8em;
+        }
+
+        .data-subtext {
+            font-size: 0.78em;
+            font-weight: bold;
+            color: #333;
+            margin-top: 4px;
         }
 
 
@@ -218,7 +240,7 @@
 
                     <div class="input-group">
                         <label for="time">Time (local)</label>
-                        <input type="time" id="time" value="">
+                        <input type="text" id="time" value="" placeholder="hh:mm:ss AM/PM">
                     </div>
 
                     <div class="input-group">
@@ -253,13 +275,34 @@
                         </div>
 
                         <div class="data-card" style="flex: 1;">
+                            <div class="data-value" id="dawn-value">--</div>
+                            <div class="data-label">Dawn <span class="arabic-label">(الفجر)</span></div>
+                        </div>
+
+                        <div class="data-card" style="flex: 1;">
                             <div class="data-value" id="sunrise-value">--</div>
-                            <div class="data-label">Sunrise</div>
+                            <div class="data-label">Sunrise <span class="arabic-label">(الشروق)</span></div>
+                        </div>
+
+                        <div class="data-card" style="flex: 1;">
+                            <div class="data-value" id="max-altitude-time-top-value">--</div>
+                            <div class="data-value" id="max-altitude-value">--</div>
+                            <div class="data-label">Max Sun Altitude <span class="arabic-label">(الظهر)</span></div>
+                        </div>
+
+                        <div class="data-card" style="flex: 1;">
+                            <div class="data-value" id="mid-afternoon-value">--</div>
+                            <div class="data-label">Mid-Afternoon <span class="arabic-label">(العصر)</span></div>
                         </div>
 
                         <div class="data-card" style="flex: 1;">
                             <div class="data-value" id="sunset-value">--</div>
-                            <div class="data-label">Sunset</div>
+                            <div class="data-label">Sunset <span class="arabic-label">(المغرب)</span></div>
+                        </div>
+
+                        <div class="data-card" style="flex: 1;">
+                            <div class="data-value" id="dusk-value">--</div>
+                            <div class="data-label">Dusk <span class="arabic-label">(العشاء)</span></div>
                         </div>
                     </div>
 
@@ -297,8 +340,13 @@
         const calculateBtn = document.getElementById('calculate-btn');
         const altitudeValue = document.getElementById('altitude-value');
         const azimuthValue = document.getElementById('azimuth-value');
+        const maxAltitudeValue = document.getElementById('max-altitude-value');
+        const maxAltitudeTimeValue = document.getElementById('max-altitude-time-top-value');
+        const midAfternoonValue = document.getElementById('mid-afternoon-value');
         const sunriseValue = document.getElementById('sunrise-value');
         const sunsetValue = document.getElementById('sunset-value');
+        const dawnValue = document.getElementById('dawn-value');
+        const duskValue = document.getElementById('dusk-value');
         const errorMessage = document.getElementById('error-message');
         const realTimeToggle = document.getElementById('real-time');
         const canvas = document.getElementById('sun-path-canvas');
@@ -317,14 +365,115 @@
             return false; // Indicate that we didn't load from cookies
         }
 
+        function formatTimeToAmPm(timeString) {
+            if (!timeString || timeString === 'N/A') {
+                return timeString || 'N/A';
+            }
+
+            const timeParts = timeString.trim().toUpperCase().match(/^([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?\s*(AM|PM)?$/);
+            if (!timeParts) {
+                return timeString;
+            }
+
+            let hour = Number(timeParts[1]);
+            const minute = timeParts[2];
+            const second = timeParts[3] || '00';
+            const meridiem = timeParts[4];
+
+            if (meridiem) {
+                if (meridiem === 'PM' && hour !== 12) {
+                    hour += 12;
+                } else if (meridiem === 'AM' && hour === 12) {
+                    hour = 0;
+                }
+            }
+
+            const suffix = hour >= 12 ? 'PM' : 'AM';
+            const displayHour = hour % 12 || 12;
+
+            return `${displayHour}:${minute}:${second} ${suffix}`;
+        }
+
+        function formatTimeToAmPmHTML(timeString) {
+            if (!timeString || timeString === 'N/A') {
+                return timeString || 'N/A';
+            }
+
+            const timeParts = timeString.trim().toUpperCase().match(/^([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?\s*(AM|PM)?$/);
+            if (!timeParts) {
+                return timeString;
+            }
+
+            let hour = Number(timeParts[1]);
+            const minute = timeParts[2];
+            const second = timeParts[3] || '00';
+            const meridiem = timeParts[4];
+
+            if (meridiem) {
+                if (meridiem === 'PM' && hour !== 12) {
+                    hour += 12;
+                } else if (meridiem === 'AM' && hour === 12) {
+                    hour = 0;
+                }
+            }
+
+            const suffix = hour >= 12 ? 'PM' : 'AM';
+            const displayHour = hour % 12 || 12;
+
+            return `${displayHour}:${minute}:${second} <span class="ampm">${suffix}</span>`;
+        }
+
+        function parseUserTime(timeString) {
+            if (!timeString) {
+                throw new Error('Please enter a valid time.');
+            }
+
+            const trimmed = timeString.trim();
+            const parts = trimmed.toUpperCase().match(/^([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?\s*(AM|PM)?$/);
+            if (!parts) {
+                throw new Error('Invalid time format. Use HH:MM[:SS] or HH:MM[:SS] AM/PM.');
+            }
+
+            let hour = Number(parts[1]);
+            const minute = Number(parts[2]);
+            const second = parts[3] ? Number(parts[3]) : 0;
+            const meridiem = parts[4];
+
+            if (minute > 59 || second > 59) {
+                throw new Error('Invalid minutes or seconds in time.');
+            }
+
+            if (meridiem) {
+                if (hour < 1 || hour > 12) {
+                    throw new Error('Hour must be between 1 and 12 for AM/PM format.');
+                }
+                if (meridiem === 'PM' && hour !== 12) {
+                    hour += 12;
+                } else if (meridiem === 'AM' && hour === 12) {
+                    hour = 0;
+                }
+            } else {
+                if (hour < 0 || hour > 23) {
+                    throw new Error('Hour must be between 0 and 23 for 24-hour format.');
+                }
+            }
+
+            return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}`;
+        }
+
+        function formatDateToAmPm(date) {
+            const hours = date.getHours();
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            const suffix = hours >= 12 ? 'PM' : 'AM';
+            const displayHour = hours % 12 || 12;
+            return `${displayHour}:${minutes}:${seconds} ${suffix}`;
+        }
+
         // Set default date and time
         const now = new Date();
         document.getElementById('date').valueAsDate = now;
-
-        // Format time as HH:MM
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        document.getElementById('time').value = `${hours}:${minutes}`;
+        document.getElementById('time').value = formatDateToAmPm(now);
 
         // Initialize the map
         let map;
@@ -487,13 +636,22 @@
                 return;
             }
 
+            let apiTime;
+            try {
+                apiTime = parseUserTime(time);
+                timeInput.value = formatTimeToAmPm(apiTime);
+            } catch (timeError) {
+                showError(timeError.message);
+                return;
+            }
+
             // Save location to cookies when calculating
             setCookie('lastLatitude', lat.toFixed(4), 30);
             setCookie('lastLongitude', lon.toFixed(4), 30);
 
             try {
                 // Use coordinates directly since we removed country/city dropdowns
-                const apiUrl = `/sun-pos/api/sun-position?lat=${lat}&lon=${lon}&date=${date}&time=${time}`;
+                const apiUrl = `/sun-pos/api/sun-position?lat=${lat}&lon=${lon}&date=${date}&time=${apiTime}`;
 
                 const response = await fetch(apiUrl);
 
@@ -506,15 +664,20 @@
                 // Update UI with results
                 altitudeValue.textContent = data.sun_altitude.toFixed(2);
                 azimuthValue.textContent = data.sun_azimuth.toFixed(2);
-                // Display sunrise and sunset
-                sunriseValue.textContent = data.sunrise || 'N/A';
-                sunsetValue.textContent = data.sunset || 'N/A';
+                maxAltitudeTimeValue.innerHTML = formatTimeToAmPmHTML(data.peak_time) || 'N/A';
+                maxAltitudeValue.textContent = `${data.peak_altitude.toFixed(2)}°`;
+                midAfternoonValue.innerHTML = formatTimeToAmPmHTML(data.mid_afternoon_time) || 'N/A';
+                // Display sunrise, sunset, dawn, and dusk in AM/PM format
+                sunriseValue.innerHTML = formatTimeToAmPmHTML(data.sunrise) || 'N/A';
+                sunsetValue.innerHTML = formatTimeToAmPmHTML(data.sunset) || 'N/A';
+                dawnValue.innerHTML = formatTimeToAmPmHTML(data.dawn) || 'N/A';
+                duskValue.innerHTML = formatTimeToAmPmHTML(data.dusk) || 'N/A';
 
                 // Clear error message
                 errorMessage.textContent = '';
 
-                // Update the daily sun path chart
-                updateSunPathChart(lat, lon, date);
+                // Update the daily sun path chart and highlight the peak time
+                updateSunPathChart(lat, lon, date, apiTime, data.peak_time);
             } catch (error) {
                 showError(`Error calculating sun position: ${error.message}`);
                 console.error('Error:', error);
@@ -528,7 +691,7 @@
 
 
         // Update the daily sun path chart
-        async function updateSunPathChart(lat, lon, date) {
+        async function updateSunPathChart(lat, lon, date, selectedTime = null, peakTime = null) {
             try {
                 // Calculate sun positions for the entire day
                 const positions = [];
@@ -567,8 +730,8 @@
                     }
                 }
 
-                // Draw the chart, passing the selected time to highlight the sun at that specific time
-                drawSunPathChart(ctx, positions, timeInput.value);
+                const selectedTime24 = selectedTime || timeInput.value;
+                drawSunPathChart(ctx, positions, selectedTime24, peakTime);
             } catch (error) {
                 console.error('Error updating sun path chart:', error);
             }
@@ -631,7 +794,15 @@
         }
 
         // Event listeners
-        calculateBtn.addEventListener('click', calculateSunPosition);
+        calculateBtn.addEventListener('click', function() {
+            // Update to current date and time
+            const now = new Date();
+            dateInput.valueAsDate = now;
+            timeInput.value = formatDateToAmPm(now);
+
+            // Calculate sun position
+            calculateSunPosition();
+        });
         document.getElementById('current-location-btn').addEventListener('click', getCurrentLocation);
 
         // Real-time tracking
@@ -643,14 +814,11 @@
                     // Update date and time inputs to current
                     const now = new Date();
                     dateInput.valueAsDate = now;
-
-                    const hours = String(now.getHours()).padStart(2, '0');
-                    const minutes = String(now.getMinutes()).padStart(2, '0');
-                    timeInput.value = `${hours}:${minutes}`;
+                    timeInput.value = formatDateToAmPm(now);
 
                     // Calculate sun position
                     calculateSunPosition();
-                }, 60000); // Update every minute
+                }, 10000); // Update every 10 seconds
             } else {
                 // Stop real-time updates
                 clearInterval(realTimeInterval);

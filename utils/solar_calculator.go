@@ -42,10 +42,10 @@ func CalculateSunPosition(latitude, longitude float64, dateTime time.Time) (alti
 	if altitude > -0.575 {
 		// Formula for atmospheric refraction (in degrees)
 		// Valid for altitudes above -0.575 degrees
-		refractionCorrection = 0.016667 / math.Tan(altitudeRad + 0.003138/(altitudeRad + 0.089186))
+		refractionCorrection = 0.016667 / math.Tan(altitudeRad+0.003138/(altitudeRad+0.089186))
 	} else {
 		// For altitudes below -0.575 degrees, use a different approximation
-		refractionCorrection = 0.57644 * math.Exp(-0.00149*altitude) - 0.07156
+		refractionCorrection = 0.57644*math.Exp(-0.00149*altitude) - 0.07156
 	}
 
 	// Apply the refraction correction
@@ -116,7 +116,7 @@ func calculateSolarTimeAccurate(dateTime time.Time, longitude float64, equationO
 	// Plus the equation of time correction
 	// Standard longitude for the time zone (multiples of 15 degrees from Greenwich)
 	// Using round instead of floor to get the closest standard meridian
-	standardMeridian := math.Round(longitude / 15.0) * 15.0
+	standardMeridian := math.Round(longitude/15.0) * 15.0
 
 	// 4 minutes per degree longitude difference from standard meridian
 	longitudeCorrection := 4.0 * (longitude - standardMeridian)
@@ -136,6 +136,61 @@ func calculateSolarTimeAccurate(dateTime time.Time, longitude float64, equationO
 	}
 
 	return correctedTime
+}
+
+// CalculatePeakAltitudeTime computes the local time and altitude of the sun's maximum elevation for the given date and location.
+func CalculatePeakAltitudeTime(latitude, longitude float64, date time.Time) (time.Time, float64) {
+	// Use sunrise/sunset window when available, otherwise search the full day.
+	sunrise, sunset := CalculateSunriseSunset(latitude, longitude, date)
+	location := date.Location()
+	start := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, location)
+	end := start.Add(24 * time.Hour)
+
+	if !sunrise.IsZero() && !sunset.IsZero() && sunset.After(sunrise) {
+		start = sunrise
+		end = sunset
+	}
+
+	bestTime := start
+	bestAltitude := math.Inf(-1)
+
+	for t := start; !t.After(end); t = t.Add(15 * time.Minute) {
+		alt, _ := CalculateSunPosition(latitude, longitude, t)
+		if alt > bestAltitude {
+			bestAltitude = alt
+			bestTime = t
+		}
+	}
+
+	refineStart := bestTime.Add(-30 * time.Minute)
+	if refineStart.Before(start) {
+		refineStart = start
+	}
+	refineEnd := bestTime.Add(30 * time.Minute)
+	if refineEnd.After(end) {
+		refineEnd = end
+	}
+
+	for t := refineStart; !t.After(refineEnd); t = t.Add(1 * time.Minute) {
+		alt, _ := CalculateSunPosition(latitude, longitude, t)
+		if alt > bestAltitude {
+			bestAltitude = alt
+			bestTime = t
+		}
+	}
+
+	return bestTime, bestAltitude
+}
+
+// CalculateMidAfternoonTime computes the time midway between peak altitude and sunset.
+func CalculateMidAfternoonTime(peakTime, sunsetTime time.Time) time.Time {
+	if sunsetTime.IsZero() || peakTime.IsZero() || !sunsetTime.After(peakTime) {
+		return time.Time{}
+	}
+
+	duration := sunsetTime.Sub(peakTime)
+	midDuration := duration / 2
+	return peakTime.Add(midDuration)
 }
 
 // calculateHourAngleAccurate calculates the hour angle in radians (more accurate)
@@ -220,4 +275,53 @@ func CalculateSunriseSunset(latitude, longitude float64, date time.Time) (time.T
 
 	// Return times converted to approximate local timezone
 	return sunriseTimeUTC.In(localLoc), sunsetTimeUTC.In(localLoc)
+}
+
+// CalculateTwilightTimes computes dawn (astronomical twilight start) and dusk (astronomical twilight end) times.
+// Astronomical twilight is when the sun is between -18° and -12° (nautical) and -12° to -6° (civil).
+// Returns zero times when twilight cannot be determined (e.g., polar regions).
+func CalculateTwilightTimes(latitude, longitude float64, date time.Time) (time.Time, time.Time) {
+	year, month, day := date.Date()
+	dayOfYear := daysSinceJan1(year, month, day)
+
+	// Solar declination (radians) and equation of time (minutes)
+	decl := calculateDeclinationAccurate(dayOfYear)   // radians
+	eot := calculateEquationOfTimeAccurate(dayOfYear) // minutes
+
+	// Convert latitude to radians
+	latRad := latitude * math.Pi / 180.0
+
+	// Sun altitude for astronomical twilight (sun 18° below horizon)
+	h0 := -18.0 * math.Pi / 180.0
+
+	// Calculate the hour angle H0 (radians)
+	cosH0 := (math.Sin(h0) - math.Sin(latRad)*math.Sin(decl)) / (math.Cos(latRad) * math.Cos(decl))
+	if cosH0 > 1 || cosH0 < -1 {
+		// Sun does not reach twilight altitude (always above or below)
+		return time.Time{}, time.Time{}
+	}
+	H0 := math.Acos(cosH0) // radians
+
+	// Solar noon in UTC (hours)
+	solarNoonUTC := 12.0 - (longitude / 15.0) - (eot / 60.0)
+
+	// Convert hour angle to hours
+	deltaHours := H0 * 12.0 / math.Pi
+
+	dawnUTC := solarNoonUTC - deltaHours
+	duskUTC := solarNoonUTC + deltaHours
+
+	// Convert to time.Time
+	locUTC := time.FixedZone("UTC", 0)
+	startOfDayUTC := time.Date(year, month, day, 0, 0, 0, 0, locUTC)
+
+	dawnTimeUTC := startOfDayUTC.Add(time.Duration(dawnUTC * float64(time.Hour)))
+	duskTimeUTC := startOfDayUTC.Add(time.Duration(duskUTC * float64(time.Hour)))
+
+	// Approximate local timezone offset from longitude (hours)
+	tzOffsetHours := int(math.Round(longitude / 15.0))
+	localLoc := time.FixedZone("Local", tzOffsetHours*3600)
+
+	// Return times converted to approximate local timezone
+	return dawnTimeUTC.In(localLoc), duskTimeUTC.In(localLoc)
 }
